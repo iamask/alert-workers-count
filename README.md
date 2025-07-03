@@ -8,7 +8,7 @@ This Cloudflare Worker monitors timeseries event data (e.g., firewall events) us
 
 1. **Fetch Data:**
 
-   - The Worker queries the Cloudflare GraphQL API for the last 30 minutes of timeseries data (per minute) for a given zone and ruleset.
+   - The Worker queries the Cloudflare GraphQL API for the **last 10 minutes** of timeseries data (per minute) for a given zone and ruleset.
 
 2. **Sort and Compare:**
 
@@ -30,18 +30,18 @@ This Cloudflare Worker monitors timeseries event data (e.g., firewall events) us
 
 ## Example Flow
 
-Suppose your data looks like this:
+Suppose your data looks like this (within the last 10 minutes):
 
-| Timestamp | Count |
+| Timestamp | Count | Alert Note         |
 | --------- | ----- | ------------------ |
-| 08:21:00  | 29    |
+| 08:21:00  | 29    |                    |
 | 08:22:00  | 38    | ← increase (alert) |
-| 08:23:00  | 38    |
+| 08:23:00  | 38    |                    |
 | 08:24:00  | 39    | ← increase (alert) |
-| 08:25:00  | 39    |
-| 08:26:00  | 39    |
-| 08:27:00  | 39    |
-| 08:28:00  | 38    |
+| 08:25:00  | 39    |                    |
+| 08:26:00  | 39    |                    |
+| 08:27:00  | 39    |                    |
+| 08:28:00  | 38    |                    |
 | 08:29:00  | 39    | ← increase (alert) |
 
 ### First Run
@@ -57,11 +57,11 @@ Suppose your data looks like this:
 
 ### Third Run (new data arrives)
 
-| Timestamp | Count |
+| Timestamp | Count | Alert Note     |
 | --------- | ----- | -------------- |
-| ...       | ...   |
-| 08:29:00  | 39    |
-| 08:30:00  | 38    |
+| ...       | ...   |                |
+| 08:29:00  | 39    |                |
+| 08:30:00  | 38    |                |
 | 08:31:00  | 40    | ← new increase |
 
 - KV contains: `lastAlertedIncreaseTs = "2025-07-03T08:29:00Z"`
