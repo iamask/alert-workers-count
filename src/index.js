@@ -105,18 +105,7 @@ query GetCustomTimeseries {
           ts: datetimeMinute
         }
       }
-      custom_timeseries_series_0_total: firewallEventsAdaptiveGroups(
-        limit: 1,
-        filter: {
-          datetime_geq: "${datetime_geq}",
-          datetime_lt: "${datetime_lt}",
-          AND: [
-            { rulesetId: "c48aae6a8efc47c3abb8e3ab19ffab15" }
-          ]
-        }
-      ) {
-        count
-      }
+    
     }
   }
 }`;
