@@ -79,12 +79,12 @@ export default {
             validateEnv(env);
             // Get the last 24 hours time window
             const timeWindow = getTimeWindow();
-            // Calculate the last 30 minutes window
+            // Calculate the last 10 minutes window
             const now = new Date();
-            const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
-            const datetime_geq = thirtyMinutesAgo.toISOString();
+            const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
+            const datetime_geq = tenMinutesAgo.toISOString();
             const datetime_lt = now.toISOString();
-            // Use the provided GraphQL query (updated to use dynamic 30-minute window)
+            // Use the provided GraphQL query (updated to use dynamic 10-minute window)
             const query = `
 query GetCustomTimeseries {
   viewer {
