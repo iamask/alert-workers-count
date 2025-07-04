@@ -1,13 +1,3 @@
-// Get time window for last 24 hours...
-const getTimeWindow = () => {
-    const now = new Date();
-    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    return {
-        start: twentyFourHoursAgo.toISOString(),
-        end: now.toISOString()
-    };
-};
-
 // Validate required environment variables
 const validateEnv = (env) => {
     const requiredVars = {
@@ -29,10 +19,6 @@ const validateEnv = (env) => {
     }
     console.log('Environment validation completed successfully');
 };
-
-// Simple hash function for state comparison
-// use 128 characters of the base64 encoded string
-const getSimpleHash = (data) => btoa(JSON.stringify(data)).slice(0, 128);
 
 // Send alert to Slack
 // Slack has string length limits, so we need to truncate the events data in graphql query like top 3
@@ -77,25 +63,27 @@ export default {
     async scheduled(request, env, ctx) {
         try {
             validateEnv(env);
-            // Get the last 24 hours time window
-            const timeWindow = getTimeWindow();
             // Calculate the last 10 minutes window
             const now = new Date();
             const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
             const datetime_geq = tenMinutesAgo.toISOString();
             const datetime_lt = now.toISOString();
-            // Use the provided GraphQL query (updated to use dynamic 10-minute window)
+            // Use environment variables for accountTag and rulesetId
+            const accountTag = env.ACCOUNT_ID;
+            const rulesetId = env.RULESET_ID;
+            // Use the provided GraphQL query (with variables)
             const query = `
 query GetCustomTimeseries {
   viewer {
-    scope: zones(filter: { zoneTag: "b58cebb2d5fd636f67c10aaf9371b20b" }) {
-      custom_timeseries_series_0: firewallEventsAdaptiveGroups(
+    accounts(filter: { accountTag: "${accountTag}" }) {
+      accountTag
+      firewallEventsAdaptiveGroups(
         limit: 5000,
         filter: {
           datetime_geq: "${datetime_geq}",
           datetime_lt: "${datetime_lt}",
           AND: [
-            { rulesetId: "c48aae6a8efc47c3abb8e3ab19ffab15" }
+            { rulesetId: "${rulesetId}" }
           ]
         },
         orderBy: [datetimeMinute_ASC]
@@ -105,7 +93,6 @@ query GetCustomTimeseries {
           ts: datetimeMinute
         }
       }
-    
     }
   }
 }`;
@@ -134,11 +121,19 @@ query GetCustomTimeseries {
             }
 
             // Extract timeseries
-            const series = data.data?.viewer?.scope?.[0]?.custom_timeseries_series_0 || [];
-            let alertTriggered = false;
+            const series = data.data?.viewer?.accounts?.[0]?.firewallEventsAdaptiveGroups || [];
             let alertEvents = [];
 
-            // Sort the series by timestamp ascending
+            // Debug: Log all timestamps returned by the GraphQL query
+            console.log('GraphQL timeseries timestamps:', series.map(p => p.dimensions.ts));
+
+            // Early exit if not enough data points
+            if (series.length < 2) {
+                console.log('Not enough data points to compare.');
+                return;
+            }
+
+            // Sort the series by timestamp ascending (do this only once)
             series.sort((a, b) => new Date(a.dimensions.ts) - new Date(b.dimensions.ts));
 
             // Get the last alerted timestamp from KV to prevent duplicate alerts
@@ -147,20 +142,17 @@ query GetCustomTimeseries {
 
             // Detect all increases between consecutive points, only alert for new ones
             for (let i = 1; i < series.length; i++) {
-                const prev = series[i - 1];
-                const curr = series[i];
-                if (curr.count > prev.count) {
+                const { ts: prevTs } = series[i - 1].dimensions;
+                const { count: prevCount } = series[i - 1];
+                const { ts: currTs } = series[i].dimensions;
+                const { count: currCount } = series[i];
+                if (currCount > prevCount) {
                     // Only alert if this increase is newer than the last alerted one
-                    if (!lastAlertedTs || curr.dimensions.ts > lastAlertedTs) {
-                        alertEvents.push({
-                            prevTs: prev.dimensions.ts,
-                            prevCount: prev.count,
-                            currTs: curr.dimensions.ts,
-                            currCount: curr.count
-                        });
+                    if (!lastAlertedTs || currTs > lastAlertedTs) {
+                        alertEvents.push({ prevTs, prevCount, currTs, currCount });
                         // Track the latest timestamp we alert on
-                        if (!latestAlertedTs || curr.dimensions.ts > latestAlertedTs) {
-                            latestAlertedTs = curr.dimensions.ts;
+                        if (!latestAlertedTs || currTs > latestAlertedTs) {
+                            latestAlertedTs = currTs;
                         }
                     }
                 }
@@ -168,7 +160,54 @@ query GetCustomTimeseries {
 
             // Send alert if any new increases were detected and update KV
             if (alertEvents.length > 0) {
-                await sendAlert(alertEvents, env.ACCOUNT_ID, env);
+                // Prepare a second GraphQL query for detailed events in the last 10 minutes
+                const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
+                const detailsQuery = `
+query Viewer {
+  viewer {
+    accounts(filter: { accountTag: "${accountTag}" }) {
+      accountTag
+      firewallEventsAdaptiveGroups(
+        filter: {
+          date: "${dateStr}"
+        }
+        limit: 5
+      ) {
+        count
+        dimensions {
+          clientIP
+          ja4
+          description
+          action
+        }
+      }
+    }
+  }
+}`;
+
+                // Fetch the detailed events
+                let detailedEvents = [];
+                try {
+                    const detailsResponse = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${env.API_TOKEN}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ query: detailsQuery }),
+                    });
+                    if (detailsResponse.ok) {
+                        const detailsData = await detailsResponse.json();
+                        detailedEvents = detailsData.data?.viewer?.accounts?.[0]?.firewallEventsAdaptiveGroups || [];
+                    } else {
+                        console.error('Failed to fetch detailed events:', await detailsResponse.text());
+                    }
+                } catch (err) {
+                    console.error('Error fetching detailed events:', err);
+                }
+
+                // Send both the increases and the detailed events in the alert
+                await sendAlert({ increases: alertEvents, details: detailedEvents }, env.ACCOUNT_ID, env);
                 console.log('Alert sent for increases:', alertEvents);
                 // Update KV with the latest alerted timestamp
                 await env.ALERTS_KV.put('lastAlertedIncreaseTs', latestAlertedTs);
@@ -180,9 +219,13 @@ query GetCustomTimeseries {
             for (const point of series) {
                 const ts = point.dimensions.ts;
                 const count = point.count;
-                console.log('Storing in KV:', `timeseries:${ts}`, count);
-                await env.ALERTS_KV.put(`timeseries:${ts}`, String(count), { expirationTtl: 86400 });
-                console.log('Stored in KV:', `timeseries:${ts}`);
+                console.log('Processing point:', ts, count);
+                try {
+                    await env.ALERTS_KV.put(`timeseries:${ts}`, String(count), { expirationTtl: 86400 });
+                    console.log('Stored in KV:', `timeseries:${ts}`);
+                } catch (err) {
+                    console.error('KV put error:', err);
+                }
             }
         } catch (error) {
             console.log(JSON.stringify({
