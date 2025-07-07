@@ -178,7 +178,6 @@ query Viewer {
           datetime_lt: "${datetime_lt_details}"
         },
         orderBy: [datetimeMinute_DESC],
-        limit: 5
       ) {
         count
         dimensions {
