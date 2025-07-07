@@ -90,8 +90,7 @@ query GetCustomTimeseries {
             { rulesetId: "${rulesetId}" }
           ]
         },
-        orderBy: [datetimeMinute_DESC] 
-        limit: 10
+        orderBy: [datetimeMinute_ASC]
       ) {
         count
         dimensions {
@@ -138,8 +137,7 @@ query GetCustomTimeseries {
                 return;
             }
 
-            // Since the series is now DESC (newest to oldest), reverse it to compare in ascending order
-            series = series.slice().reverse();
+            // No need to sort; series is already in chronological order from the API
 
             // Get the last alerted timestamp from KV to prevent duplicate alerts
             const lastAlertedTs = await env.ALERTS_KV.get('lastAlertedIncreaseTs');
@@ -165,8 +163,10 @@ query GetCustomTimeseries {
 
             // Send alert if any new increases were detected and update KV
             if (alertEvents.length > 0) {
-                // Prepare a second GraphQL query for detailed events in the last 10 minutes
-                const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
+                // Prepare a second GraphQL query for detailed events in the last 2 minutes
+                const twoMinutesAgo = new Date(now.getTime() - 2 * 60 * 1000);
+                const datetime_geq_details = twoMinutesAgo.toISOString();
+                const datetime_lt_details = now.toISOString();
                 const detailsQuery = `
 query Viewer {
   viewer {
@@ -174,8 +174,10 @@ query Viewer {
       accountTag
       firewallEventsAdaptiveGroups(
         filter: {
-          date: "${dateStr}"
-        }
+          datetime_geq: "${datetime_geq_details}",
+          datetime_lt: "${datetime_lt_details}"
+        },
+        orderBy: [datetimeMinute_DESC],
         limit: 5
       ) {
         count

@@ -8,9 +8,9 @@ This Cloudflare Worker monitors timeseries event data (e.g., firewall events) us
 
 1. **Fetch Data:**
 
-   - The Worker queries the Cloudflare GraphQL API for the **latest 10 minutes** of timeseries data (per minute) for a given account and ruleset.
-   - The query uses `orderBy: [datetimeMinute_DESC]` and `limit: 10` to fetch the most recent 10 data points.
-   - **Note:** The API returns data in descending order (newest to oldest). The code reverses this array to process data in chronological order (oldest to newest), which is necessary for correct increase detection.
+   - The Worker queries the Cloudflare GraphQL API for all timeseries data points (per minute) from the **last 10 minutes** for a given account and ruleset, using a time window filter.
+   - The query uses `orderBy: [datetimeMinute_ASC]` so the API returns data already sorted in chronological order (oldest to newest).
+   - The data is processed as received from the API for increase detection.
 
 2. **Sort and Compare:**
 
