@@ -27,6 +27,7 @@ This Cloudflare Worker monitors timeseries event data (e.g., firewall events) us
 
    - If any new increases are found, the Worker sends an alert (e.g., to Slack) with details of all new increases.
    - **Only the top 3 increases and top 3 detailed events are included in the Slack alert** to avoid message length issues.
+   - When an increase is detected, the Worker fetches the latest 5 detailed events from the last 2 minutes (using `datetime_geq` and `datetime_lt` filters, sorted by `datetimeMinute_DESC`) and includes them in the Slack alert.
 
 5. **KV Storage:**
    - All timeseries points are stored in KV with a TTL of 24 hours for reference and possible future use.
