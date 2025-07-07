@@ -21,7 +21,7 @@ const validateEnv = (env) => {
 };
 
 // Send alert to Slack
-// Only the top 3 increases and top 3 details will be sent to avoid Slack string length limits
+// Only the top 3 increases and top 3 details will be sent to avoid Slack string length nps
 const sendAlert = async (events, accountTag, env) => {
     // Truncate increases and details to top 3 each if present
     const truncatedEvents = {
@@ -90,7 +90,8 @@ query GetCustomTimeseries {
             { rulesetId: "${rulesetId}" }
           ]
         },
-        orderBy: [datetimeMinute_ASC]
+        orderBy: [datetimeMinute_ASC],
+        limit: 1000
       ) {
         count
         dimensions {
@@ -100,6 +101,8 @@ query GetCustomTimeseries {
     }
   }
 }`;
+            // Log the main query for troubleshooting
+            console.log('Main GraphQL query:', query);
 
             // Fetch the timeseries data
             const response = await fetch('https://api.cloudflare.com/client/v4/graphql', {
@@ -177,7 +180,7 @@ query Viewer {
           datetime_geq: "${datetime_geq_details}",
           datetime_lt: "${datetime_lt_details}"
         },
-        orderBy: [datetimeMinute_DESC],
+        orderBy: [datetimeMinute_DESC]
       ) {
         count
         dimensions {
@@ -190,7 +193,8 @@ query Viewer {
     }
   }
 }`;
-
+                // Log the detailsQuery for troubleshooting
+                console.log('Details GraphQL query:', detailsQuery);
                 // Fetch the detailed events
                 let detailedEvents = [];
                 try {
@@ -202,11 +206,14 @@ query Viewer {
                         },
                         body: JSON.stringify({ query: detailsQuery }),
                     });
+                    console.log('Details fetch response status:', detailsResponse.status);
+                    const detailsRawText = await detailsResponse.text();
+                    console.log('Details fetch raw response:', detailsRawText);
                     if (detailsResponse.ok) {
-                        const detailsData = await detailsResponse.json();
+                        const detailsData = JSON.parse(detailsRawText);
                         detailedEvents = detailsData.data?.viewer?.accounts?.[0]?.firewallEventsAdaptiveGroups || [];
                     } else {
-                        console.error('Failed to fetch detailed events:', await detailsResponse.text());
+                        console.error('Failed to fetch detailed events:', detailsRawText);
                     }
                 } catch (err) {
                     console.error('Error fetching detailed events:', err);
