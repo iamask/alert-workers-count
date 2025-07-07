@@ -46,6 +46,8 @@ const sendAlert = async (events, accountTag, env) => {
             }
         ]
     };
+    // Log the Slack message payload for debugging
+    console.log('Slack message payload:', JSON.stringify(message, null, 2));
 
     try {
         const response = await fetch(env.SLACK_WEBHOOK_URL, {
@@ -180,7 +182,8 @@ query Viewer {
           datetime_geq: "${datetime_geq_details}",
           datetime_lt: "${datetime_lt_details}"
         },
-        orderBy: [datetimeMinute_DESC]
+        orderBy: [datetimeMinute_DESC],
+         limit: 10
       ) {
         count
         dimensions {
