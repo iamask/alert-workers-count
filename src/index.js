@@ -21,8 +21,13 @@ const validateEnv = (env) => {
 };
 
 // Send alert to Slack
-// Slack has string length limits, so we need to truncate the events data in graphql query like top 3
+// Only the top 3 increases and top 3 details will be sent to avoid Slack string length limits
 const sendAlert = async (events, accountTag, env) => {
+    // Truncate increases and details to top 3 each if present
+    const truncatedEvents = {
+        increases: Array.isArray(events.increases) ? events.increases.slice(0, 3) : events.increases,
+        details: Array.isArray(events.details) ? events.details.slice(0, 3) : events.details
+    };
     const message = {
         blocks: [
             {
@@ -36,7 +41,7 @@ const sendAlert = async (events, accountTag, env) => {
                 type: "section",
                 text: {
                     type: "mrkdwn",
-                    text: JSON.stringify(events, null, 2)
+                    text: JSON.stringify(truncatedEvents, null, 2)
                 }
             }
         ]
@@ -78,7 +83,6 @@ query GetCustomTimeseries {
     accounts(filter: { accountTag: "${accountTag}" }) {
       accountTag
       firewallEventsAdaptiveGroups(
-        limit: 5000,
         filter: {
           datetime_geq: "${datetime_geq}",
           datetime_lt: "${datetime_lt}",
@@ -86,7 +90,8 @@ query GetCustomTimeseries {
             { rulesetId: "${rulesetId}" }
           ]
         },
-        orderBy: [datetimeMinute_ASC]
+        orderBy: [datetimeMinute_DESC] 
+        limit: 10
       ) {
         count
         dimensions {
@@ -121,7 +126,7 @@ query GetCustomTimeseries {
             }
 
             // Extract timeseries
-            const series = data.data?.viewer?.accounts?.[0]?.firewallEventsAdaptiveGroups || [];
+            let series = data.data?.viewer?.accounts?.[0]?.firewallEventsAdaptiveGroups || [];
             let alertEvents = [];
 
             // Debug: Log all timestamps returned by the GraphQL query
@@ -133,8 +138,8 @@ query GetCustomTimeseries {
                 return;
             }
 
-            // Sort the series by timestamp ascending (do this only once)
-            series.sort((a, b) => new Date(a.dimensions.ts) - new Date(b.dimensions.ts));
+            // Since the series is now DESC (newest to oldest), reverse it to compare in ascending order
+            series = series.slice().reverse();
 
             // Get the last alerted timestamp from KV to prevent duplicate alerts
             const lastAlertedTs = await env.ALERTS_KV.get('lastAlertedIncreaseTs');

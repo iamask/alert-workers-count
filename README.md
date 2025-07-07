@@ -8,11 +8,13 @@ This Cloudflare Worker monitors timeseries event data (e.g., firewall events) us
 
 1. **Fetch Data:**
 
-   - The Worker queries the Cloudflare GraphQL API for the **last 10 minutes** of timeseries data (per minute) for a given zone and ruleset.
+   - The Worker queries the Cloudflare GraphQL API for the **latest 10 minutes** of timeseries data (per minute) for a given account and ruleset.
+   - The query uses `orderBy: [datetimeMinute_DESC]` and `limit: 10` to fetch the most recent 10 data points.
+   - **Note:** The API returns data in descending order (newest to oldest). The code reverses this array to process data in chronological order (oldest to newest), which is necessary for correct increase detection.
 
 2. **Sort and Compare:**
 
-   - The data is sorted by timestamp.
+   - The data is compared in chronological order (oldest to newest).
    - For each consecutive pair of points, the Worker checks if the current count is greater than the previous count.
 
 3. **Deduplication:**
@@ -24,6 +26,7 @@ This Cloudflare Worker monitors timeseries event data (e.g., firewall events) us
 4. **Alerting:**
 
    - If any new increases are found, the Worker sends an alert (e.g., to Slack) with details of all new increases.
+   - **Only the top 3 increases and top 3 detailed events are included in the Slack alert** to avoid message length issues.
 
 5. **KV Storage:**
    - All timeseries points are stored in KV with a TTL of 24 hours for reference and possible future use.
@@ -70,13 +73,59 @@ Suppose your data looks like this (within the last 10 minutes):
 
 ## Configuration
 
-- Set your Cloudflare KV namespace in `wrangler.jsonc`.
-- Configure your zoneTag, rulesetId, and API token as environment variables or in the Worker code.
+### Required Environment Variables
+
+Set these in your environment or via Wrangler secrets:
+
+- `API_TOKEN`: Cloudflare API Token (with GraphQL and KV permissions)
+- `ACCOUNT_ID`: Cloudflare Account Tag (Account ID)
+- `RULESET_ID`: Default HTTP DDPS Ruleset ID
+- `SLACK_WEBHOOK_URL`: Slack Webhook URL for alerts
+
+### KV Namespace
+
+- The Worker uses a KV namespace for deduplication and timeseries storage.
+- Example (from `wrangler.jsonc`):
+
+```
+"kv_namespaces": [
+  {
+    "binding": "ALERTS_KV",
+    "id": "<your-kv-namespace-id>"
+  }
+]
+```
+
+### Wrangler Configuration
+
+- Main entry: `src/index.js`
+- Compatibility date: set as needed (see `wrangler.jsonc`)
+
+## Usage & Deployment
+
+1. **Install dependencies:**
+   ```sh
+   npm install
+   ```
+2. **Set up environment variables and KV namespace** in `wrangler.jsonc` and/or using Wrangler secrets.
+3. **Deploy to Cloudflare Workers:**
+   ```sh
+   npm run deploy
+   ```
+4. **Development mode:**
+   ```sh
+   npm run dev
+   ```
+5. **Run tests:**
+   ```sh
+   npm test
+   ```
 
 ## Customization
 
 - You can adjust the time window, alerting logic, or notification method as needed.
 - The deduplication logic ensures you only get alerts for new increases, not repeats.
+- To change the number of data points or Slack alert truncation, modify the `limit` in the GraphQL query or the slice in the alert logic.
 
 ## License
 
