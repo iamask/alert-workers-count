@@ -168,9 +168,9 @@ query GetCustomTimeseries {
 
             // Send alert if any new increases were detected and update KV
             if (alertEvents.length > 0) {
-                // Prepare a second GraphQL query for detailed events in the last 2 minutes
-                const twoMinutesAgo = new Date(now.getTime() - 2 * 60 * 1000);
-                const datetime_geq_details = twoMinutesAgo.toISOString();
+                // Prepare a second GraphQL query for detailed events in the last 5 minutes
+                const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+                const datetime_geq_details = fiveMinutesAgo.toISOString();
                 const datetime_lt_details = now.toISOString();
                 const detailsQuery = `
 query Viewer {
@@ -182,8 +182,7 @@ query Viewer {
           datetime_geq: "${datetime_geq_details}",
           datetime_lt: "${datetime_lt_details}"
         },
-        orderBy: [datetimeMinute_DESC],
-         limit: 10
+        limit: 10
       ) {
         count
         dimensions {
