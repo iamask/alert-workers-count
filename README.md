@@ -8,14 +8,13 @@ This Cloudflare Worker monitors timeseries event data (e.g., firewall events) us
 
 1. **Fetch Data:**
 
-   - The Worker queries the Cloudflare GraphQL API for all timeseries data points (per minute) from the **last 10 minutes** for a given account and ruleset, using a time window filter.
-   - The query uses `orderBy: [datetimeMinute_ASC]` so the API returns data already sorted in chronological order (oldest to newest).
+   - The Worker queries the Cloudflare GraphQL API for up to 1000 timeseries data points (per minute) from the **last 10 minutes** for a given account and ruleset, using a time window filter.
+   - The query uses `orderBy: [datetimeMinute_ASC], limit: 1000` so the API returns data already sorted in chronological order (oldest to newest).
    - The data is processed as received from the API for increase detection.
 
 2. **Sort and Compare:**
 
-   - The data is compared in chronological order (oldest to newest).
-   - For each consecutive pair of points, the Worker checks if the current count is greater than the previous count.
+   - The data is already sorted by time (ascending) from the API, so the Worker can directly compare consecutive points to detect increases.
 
 3. **Deduplication:**
 
@@ -27,7 +26,8 @@ This Cloudflare Worker monitors timeseries event data (e.g., firewall events) us
 
    - If any new increases are found, the Worker sends an alert (e.g., to Slack) with details of all new increases.
    - **Only the top 3 increases and top 3 detailed events are included in the Slack alert** to avoid message length issues.
-   - When an increase is detected, the Worker fetches the latest 5 detailed events from the last 2 minutes (using `datetime_geq` and `datetime_lt` filters, sorted by `datetimeMinute_DESC`) and includes them in the Slack alert.
+   - When an increase is detected, the Worker fetches up to 10 detailed events from the last 5 minutes using a separate query with a time window filter.
+   - The details are included in the Slack alert (top 3 increases and top 3 details).
 
 5. **KV Storage:**
    - All timeseries points are stored in KV with a TTL of 24 hours for reference and possible future use.
@@ -101,26 +101,9 @@ Set these in your environment or via Wrangler secrets:
 
 - Main entry: `src/index.js`
 - Compatibility date: set as needed (see `wrangler.jsonc`)
+  ```
 
-## Usage & Deployment
-
-1. **Install dependencies:**
-   ```sh
-   npm install
-   ```
-2. **Set up environment variables and KV namespace** in `wrangler.jsonc` and/or using Wrangler secrets.
-3. **Deploy to Cloudflare Workers:**
-   ```sh
-   npm run deploy
-   ```
-4. **Development mode:**
-   ```sh
-   npm run dev
-   ```
-5. **Run tests:**
-   ```sh
-   npm test
-   ```
+  ```
 
 ## Customization
 
